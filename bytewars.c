@@ -37,6 +37,12 @@ static MarketItem market[MAX_ITEMS] = {
     {"Bio-Firmware", 15, 15}
 };
 
+// Missing input routing callback added here
+static void input_callback(InputEvent* input_event, void* ctx) {
+    FuriMessageQueue* event_queue = ctx;
+    furi_message_queue_put(event_queue, input_event, FuriWaitForever);
+}
+
 // Update market prices randomly based on base price
 void randomize_prices() {
     for(int i = 0; i < MAX_ITEMS; i++) {
@@ -67,7 +73,7 @@ static void render_callback(Canvas* canvas, void* ctx) {
         return;
     }
 
-    // Top Status Bar (All active screens)
+    // Top Status Bar
     snprintf(buffer, sizeof(buffer), "D:%d/%d | $%d | Debt:$%d", state->day, TOTAL_DAYS, state->cash, state->debt);
     canvas_draw_str(canvas, 2, 10, buffer);
     canvas_draw_line(canvas, 0, 12, 128, 12);
@@ -197,7 +203,7 @@ static void handle_input(InputEvent* input, GameState* state) {
 }
 
 // Application entry point
-int32_t bytewars_app(void* p) {
+int32_t bytemarket_app(void* p) {
     UNUSED(p);
     FuriMessageQueue* event_queue = furi_message_queue_alloc(8, sizeof(InputEvent));
     
@@ -216,7 +222,9 @@ int32_t bytewars_app(void* p) {
 
     ViewPort* view_port = view_port_alloc();
     view_port_draw_callback_set(view_port, render_callback, state);
-    view_port_input_callback_set(view_port, input_viewport_callback, event_queue);
+    
+    // Fixed reference to our custom input callback
+    view_port_input_callback_set(view_port, input_callback, event_queue);
 
     Gui* gui = furi_record_open(RECORD_GUI);
     gui_add_view_port(gui, view_port, GuiLayerFullscreen);
