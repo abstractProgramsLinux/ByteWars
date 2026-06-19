@@ -197,7 +197,7 @@ static void handle_input(InputEvent* input, GameState* state) {
 }
 
 // Application entry point
-int32_t bytemarket_app(void* p) {
+int32_t bytewars_app(void* p) {
     UNUSED(p);
     FuriMessageQueue* event_queue = furi_message_queue_alloc(8, sizeof(InputEvent));
     
