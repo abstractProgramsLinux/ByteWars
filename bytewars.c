@@ -37,13 +37,11 @@ static MarketItem market[MAX_ITEMS] = {
     {"Bio-Firmware", 15, 15}
 };
 
-// Missing input routing callback added here
 static void input_callback(InputEvent* input_event, void* ctx) {
     FuriMessageQueue* event_queue = ctx;
     furi_message_queue_put(event_queue, input_event, FuriWaitForever);
 }
 
-// Update market prices randomly based on base price
 void randomize_prices() {
     for(int i = 0; i < MAX_ITEMS; i++) {
         int variance = (market[i].base_price * 40) / 100; // 40% variance
@@ -52,7 +50,6 @@ void randomize_prices() {
     }
 }
 
-// Render the UI screens
 static void render_callback(Canvas* canvas, void* ctx) {
     GameState* state = ctx;
     canvas_clear(canvas);
@@ -123,130 +120,26 @@ static void render_callback(Canvas* canvas, void* ctx) {
     }
 }
 
-// Input handler for controls
-static void handle_input(InputEvent* input, GameState* state) {
+// Fixed Input Handler Logic
+static void handle_input(InputEvent* input, GameState* state, bool* should_exit) {
     if(input->type != InputTypePress) return;
 
-    if(state->current_screen == 5) { // Game Over
-        if(input->key == InputKeyOk) { // Reset game
+    // Global check: if Back is pressed
+    if(input->key == InputKeyBack) {
+        if(state->current_screen == 0) {
+            *should_exit = true; // Only exit app completely if we are already on the Main HUD
+        } else {
+            state->current_screen = 0; // Otherwise, pop back to the Main HUD
+        }
+        return;
+    }
+
+    if(state->current_screen == 5) { // Game Over Restart
+        if(input->key == InputKeyOk) {
             state->cash = 1000;
             state->debt = 2000;
             state->bank = 0;
             state->day = 1;
             state->current_sector = 0;
             state->current_screen = 0;
-            memset(state->inventory, 0, sizeof(state->inventory));
-            randomize_prices();
-        }
-        return;
-    }
-
-    if(state->current_screen == 0) { // Main Menu navigation
-        if(input->key == InputKeyUp) state->selected_menu_index = (state->selected_menu_index - 1 + 4) % 4;
-        if(input->key == InputKeyDown) state->selected_menu_index = (state->selected_menu_index + 1) % 4;
-        if(input->key == InputKeyOk) {
-            state->current_screen = state->selected_menu_index + 1;
-            state->selected_sub_index = 0;
-        }
-    } 
-    else { // Sub-menus (Buy, Sell, Travel, Bank)
-        if(input->key == InputKeyBack) {
-            state->current_screen = 0; // Go back to main HUD
-            return;
-        }
-        
-        int max_index = (state->current_screen == 4) ? 3 : 4; // Bank has 3 options, others 4
-        if(input->key == InputKeyUp) state->selected_sub_index = (state->selected_sub_index - 1 + max_index) % max_index;
-        if(input->key == InputKeyDown) state->selected_sub_index = (state->selected_sub_index + 1) % max_index;
-
-        if(input->key == InputKeyOk) {
-            int idx = state->selected_sub_index;
-            if(state->current_screen == 1) { // Buy Logic
-                if(state->cash >= market[idx].current_price) {
-                    state->cash -= market[idx].current_price;
-                    state->inventory[idx]++;
-                }
-            } 
-            else if(state->current_screen == 2) { // Sell Logic
-                if(state->inventory[idx] > 0) {
-                    state->cash += market[idx].current_price;
-                    state->inventory[idx]--;
-                }
-            } 
-            else if(state->current_screen == 3) { // Travel Logic
-                if(state->current_sector != idx) {
-                    state->current_sector = idx;
-                    state->day++;
-                    state->debt = (state->debt * 115) / 100; // 15% debt interest daily
-                    randomize_prices();
-                    state->current_screen = 0; // Return to main menu
-                    
-                    if(state->day > TOTAL_DAYS) {
-                        state->current_screen = 5; // Trigger Game Over
-                    }
-                }
-            }
-            else if(state->current_screen == 4) { // Bank Logic
-                if(idx == 0 && state->cash >= 500 && state->debt >= 500) { // Pay Debt
-                    state->cash -= 500;
-                    state->debt -= 500;
-                } else if(idx == 1 && state->cash >= 500) { // Deposit
-                    state->cash -= 500;
-                    state->bank += 500;
-                } else if(idx == 2 && state->bank >= 500) { // Withdraw
-                    state->bank -= 500;
-                    state->cash += 500;
-                }
-            }
-        }
-    }
-}
-
-// Application entry point
-int32_t bytemarket_app(void* p) {
-    UNUSED(p);
-    FuriMessageQueue* event_queue = furi_message_queue_alloc(8, sizeof(InputEvent));
-    
-    GameState* state = malloc(sizeof(GameState));
-    state->cash = 1000;
-    state->debt = 2000;
-    state->bank = 0;
-    state->day = 1;
-    state->current_sector = 0;
-    state->current_screen = 0;
-    state->selected_menu_index = 0;
-    state->selected_sub_index = 0;
-    memset(state->inventory, 0, sizeof(state->inventory));
-    srand(furi_get_tick());
-    randomize_prices();
-
-    ViewPort* view_port = view_port_alloc();
-    view_port_draw_callback_set(view_port, render_callback, state);
-    
-    // Fixed reference to our custom input callback
-    view_port_input_callback_set(view_port, input_callback, event_queue);
-
-    Gui* gui = furi_record_open(RECORD_GUI);
-    gui_add_view_port(gui, view_port, GuiLayerFullscreen);
-
-    InputEvent event;
-    while(1) {
-        FuriStatus status = furi_message_queue_get(event_queue, &event, FuriWaitForever);
-        if(status == FuriStatusOk) {
-            if(event.key == InputKeyBack && state->current_screen == 0) {
-                break; // Exit app completely if pressing Back on Main HUD
-            }
-            handle_input(&event, state);
-            view_port_update(view_port);
-        }
-    }
-
-    // Clean up memory
-    gui_remove_view_port(gui, view_port);
-    view_port_free(view_port);
-    furi_message_queue_free(event_queue);
-    furi_record_close(RECORD_GUI);
-    free(state);
-
-    return 0;
-}
+            memset(state->inventory,
