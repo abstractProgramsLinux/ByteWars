@@ -33,12 +33,12 @@ static const char* sectors[MAX_SECTORS] = {
 };
 
 static MarketItem market[MAX_ITEMS] = {
-    {"Synth-Weed",     50,   50},
-    {"Speed",          80,   80},
+    {"Synth-Weed",     15,   15},
+    {"Speed",          60,   60},
     {"Acid",           150,  150},
-    {"Snow",        400,  400},
-    {"Black-Tar",         850,  850},
-    {"Nanite-Drank",   2500, 2500}
+    {"Cocaine",        400,  400},
+    {"Heroin",         850,  850},
+    {"Nanite-Juice",   2500, 2500}
 };
 
 static void game_input_callback(InputEvent* input_event, void* context) {
@@ -259,4 +259,193 @@ int32_t bytemarket_app(void* p) {
 
             if(state->current_screen == 6) {
                 if(event.key == InputKeyUp) state->selected_menu_index = (state->selected_menu_index - 1 + 3) % 3;
-                if(event.key == InputKeyDown) state->selected_menu
+                if(event.key == InputKeyDown) state->selected_menu_index = (state->selected_menu_index + 1) % 3;
+                if(event.key == InputKeyOk) {
+                    if(state->selected_menu_index == 0) state->total_days = 30;
+                    if(state->selected_menu_index == 1) state->total_days = 90;
+                    if(state->selected_menu_index == 2) state->total_days = 120;
+                    state->current_screen = 0;
+                    state->selected_menu_index = 0;
+                }
+                view_port_update(view_port);
+                continue;
+            }
+
+            if(state->current_screen == 5) { 
+                if(event.key == InputKeyOk) {
+                    state->cash = 1000;
+                    state->debt = 2000;
+                    state->bank = 0;
+                    state->day = 1;
+                    state->health = 100;
+                    state->weapon_level = 0;
+                    state->barter_chips = 0;
+                    state->current_sector = 0;
+                    state->current_screen = 6; 
+                    memset(state->inventory, 0, sizeof(state->inventory));
+                    randomize_prices();
+                }
+                view_port_update(view_port);
+                continue;
+            }
+
+            if(state->current_screen == 7) { // Muggers
+                if(event.key == InputKeyUp || event.key == InputKeyDown) state->selected_sub_index = (state->selected_sub_index + 1) % 2;
+                if(event.key == InputKeyOk) {
+                    if(state->selected_sub_index == 0) { 
+                        int fail_chance = (state->weapon_level == 0) ? 50 : (state->weapon_level == 1) ? 25 : 10;
+                        if((rand() % 100) < fail_chance) { 
+                            state->health -= 25;
+                            state->cash /= 2; 
+                        } else {
+                            state->cash += 400; 
+                        }
+                    } else { 
+                        int dropped_idx = rand() % MAX_ITEMS;
+                        if(state->inventory[dropped_idx] > 0) state->inventory[dropped_idx]--; 
+                        state->health -= 5;
+                    }
+                    state->current_screen = 0;
+                    if(state->health <= 0) state->current_screen = 5;
+                }
+                view_port_update(view_port);
+                continue;
+            }
+
+            if(state->current_screen == 8) { // Police Intercept
+                if(event.key == InputKeyUp) state->selected_sub_index = (state->selected_sub_index - 1 + 3) % 3;
+                if(event.key == InputKeyDown) state->selected_sub_index = (state->selected_sub_index + 1) % 3;
+                if(event.key == InputKeyOk) {
+                    if(state->selected_sub_index == 0) { 
+                        int fail_chance = (state->weapon_level == 0) ? 70 : (state->weapon_level == 1) ? 40 : 15;
+                        if((rand() % 100) < fail_chance) { 
+                            state->health -= 40;
+                            state->cash = 0; 
+                        }
+                    } else if(state->selected_sub_index == 1) { 
+                        if(rand() % 2 == 0) {
+                            state->health -= 15; 
+                        }
+                    } else { 
+                        int total_contraband = 0;
+                        for(int i = 0; i < MAX_ITEMS; i++) {
+                            total_contraband += state->inventory[i];
+                            state->inventory[i] = 0; 
+                        }
+                        state->cash -= (total_contraband * 100);
+                        if(state->cash < 0) state->cash = 0;
+                        if(total_contraband > 5) {
+                            state->day += 3; 
+                        }
+                    }
+                    state->current_screen = 0;
+                    if(state->health <= 0 || state->day > state->total_days) state->current_screen = 5;
+                }
+                view_port_update(view_port);
+                continue;
+            }
+
+            if(state->current_screen == 9) { // Weapon Shop Menu
+                if(event.key == InputKeyUp || event.key == InputKeyDown) state->selected_sub_index = (state->selected_sub_index + 1) % 2;
+                if(event.key == InputKeyOk) {
+                    if(state->selected_sub_index == 0) { 
+                        if(state->weapon_level == 0 && state->cash >= 1000) {
+                            state->cash -= 1000;
+                            state->weapon_level = 1; 
+                        } else if(state->weapon_level == 1 && state->cash >= 3500) {
+                            state->cash -= 3500;
+                            state->weapon_level = 2; 
+                        }
+                    } else if(state->selected_sub_index == 1) { 
+                        if(state->barter_chips < 3 && state->cash >= 1500) {
+                            state->cash -= 1500;
+                            state->barter_chips++;
+                        }
+                    }
+                }
+                view_port_update(view_port);
+                continue;
+            }
+
+            // Screen 0 HUD Options Controller Update
+            if(state->current_screen == 0) { 
+                if(event.key == InputKeyUp) state->selected_menu_index = (state->selected_menu_index - 1 + 5) % 5;
+                if(event.key == InputKeyDown) state->selected_menu_index = (state->selected_menu_index + 1) % 5;
+                if(event.key == InputKeyOk) {
+                    if(state->selected_menu_index == 4) {
+                        state->current_screen = 9; 
+                    } else {
+                        state->current_screen = state->selected_menu_index + 1; 
+                    }
+                    state->selected_sub_index = 0;
+                }
+            } 
+            else { 
+                int max_index = (state->current_screen == 4) ? 3 : MAX_ITEMS; 
+                if(event.key == InputKeyUp) state->selected_sub_index = (state->selected_sub_index - 1 + max_index) % max_index;
+                if(event.key == InputKeyDown) state->selected_sub_index = (state->selected_sub_index + 1) % max_index;
+
+                if(event.key == InputKeyOk) {
+                    int idx = state->selected_sub_index;
+                    if(state->current_screen == 1) { 
+                        int adjusted_cost = market[idx].current_price - ((market[idx].current_price * (state->barter_chips * 10)) / 100);
+                        if(state->cash >= adjusted_cost) {
+                            state->cash -= adjusted_cost;
+                            state->inventory[idx]++;
+                            
+                            if(rand() % 100 < 15) {
+                                state->current_screen = 7;
+                                state->selected_sub_index = 0;
+                            }
+                        }
+                    } 
+                    else if(state->current_screen == 2) { 
+                        if(state->inventory[idx] > 0) {
+                            state->cash += market[idx].current_price;
+                            state->inventory[idx]--;
+                        }
+                    } 
+                    else if(state->current_screen == 3) { 
+                        if(state->current_sector != idx) {
+                            state->current_sector = idx;
+                            state->day++;
+                            state->debt = (state->debt * 115) / 100; 
+                            randomize_prices();
+                            state->current_screen = 0; 
+                            
+                            if(rand() % 100 < 20) {
+                                state->current_screen = 8;
+                                state->selected_sub_index = 0;
+                            }
+                            
+                            if(state->day > state->total_days) {
+                                state->current_screen = 5; 
+                            }
+                        }
+                    }
+                    else if(state->current_screen == 4) { 
+                        if(idx == 0 && state->cash >= 500 && state->debt >= 500) {
+                            state->cash -= 500;
+                            state->debt -= 500;
+                        } else if(idx == 1 && state->cash >= 500) {
+                            state->cash -= 500;
+                            state->bank += 500;
+                        } else if(idx == 2 && state->bank >= 500) {
+                            state->bank -= 500;
+                            state->cash += 500;
+                        }
+                    }
+                }
+            }
+            view_port_update(view_port);
+        }
+    }
+
+    gui_remove_view_port(gui, view_port);
+    view_port_free(view_port);
+    furi_message_queue_free(event_queue);
+    furi_record_close(RECORD_GUI);
+    free(state);
+
+    return 0;
+}
