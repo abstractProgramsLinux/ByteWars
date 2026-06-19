@@ -7,7 +7,6 @@
 #define MAX_SECTORS 4
 #define TOTAL_DAYS 30
 
-// Game State Structures
 typedef struct {
     const char* name;
     int base_price;
@@ -22,7 +21,7 @@ typedef struct {
     int current_sector;
     int inventory[MAX_ITEMS];
     int selected_menu_index;
-    int current_screen; // 0: Main, 1: Buy, 2: Sell, 3: Travel, 4: Bank, 5: GameOver
+    int current_screen; 
     int selected_sub_index;
 } GameState;
 
@@ -37,14 +36,9 @@ static MarketItem market[MAX_ITEMS] = {
     {"Bio-Firmware", 15, 15}
 };
 
-static void input_callback(InputEvent* input_event, void* ctx) {
-    FuriMessageQueue* event_queue = ctx;
-    furi_message_queue_put(event_queue, input_event, FuriWaitForever);
-}
-
 void randomize_prices() {
     for(int i = 0; i < MAX_ITEMS; i++) {
-        int variance = (market[i].base_price * 40) / 100; // 40% variance
+        int variance = (market[i].base_price * 40) / 100; 
         market[i].current_price = market[i].base_price + (rand() % (variance * 2)) - variance;
         if(market[i].current_price < 2) market[i].current_price = 2;
     }
@@ -57,7 +51,7 @@ static void render_callback(Canvas* canvas, void* ctx) {
 
     char buffer[64];
 
-    if (state->current_screen == 5) { // Game Over Screen
+    if (state->current_screen == 5) { 
         canvas_set_font(canvas, FontPrimary);
         canvas_draw_str(canvas, 30, 15, "GAME OVER");
         canvas_set_font(canvas, FontSecondary);
@@ -70,12 +64,10 @@ static void render_callback(Canvas* canvas, void* ctx) {
         return;
     }
 
-    // Top Status Bar
     snprintf(buffer, sizeof(buffer), "D:%d/%d | $%d | Debt:$%d", state->day, TOTAL_DAYS, state->cash, state->debt);
     canvas_draw_str(canvas, 2, 10, buffer);
     canvas_draw_line(canvas, 0, 12, 128, 12);
 
-    // Screen 0: Main HUD
     if(state->current_screen == 0) {
         snprintf(buffer, sizeof(buffer), "Loc: %s", sectors[state->current_sector]);
         canvas_draw_str(canvas, 2, 22, buffer);
@@ -88,7 +80,6 @@ static void render_callback(Canvas* canvas, void* ctx) {
             canvas_draw_str(canvas, 15, 34 + (i * 9), menu_opts[i]);
         }
     }
-    // Screen 1 & 2: Buy / Sell Market
     else if(state->current_screen == 1 || state->current_screen == 2) {
         canvas_draw_str(canvas, 2, 21, state->current_screen == 1 ? "BUY DATA:" : "SELL DATA:");
         for(int i = 0; i < MAX_ITEMS; i++) {
@@ -97,7 +88,6 @@ static void render_callback(Canvas* canvas, void* ctx) {
             canvas_draw_str(canvas, 10, 31 + (i * 8), buffer);
         }
     }
-    // Screen 3: Travel Selection
     else if(state->current_screen == 3) {
         canvas_draw_str(canvas, 2, 21, "JUMP TO SECTOR:");
         for(int i = 0; i < MAX_SECTORS; i++) {
@@ -106,7 +96,6 @@ static void render_callback(Canvas* canvas, void* ctx) {
             canvas_draw_str(canvas, 10, 31 + (i * 8), buffer);
         }
     }
-    // Screen 4: Bank
     else if(state->current_screen == 4) {
         canvas_draw_str(canvas, 2, 22, "LOAN SHARK TERMINAL");
         snprintf(buffer, sizeof(buffer), "Bank Balance: $%d", state->bank);
@@ -120,26 +109,102 @@ static void render_callback(Canvas* canvas, void* ctx) {
     }
 }
 
-// Fixed Input Handler Logic
-static void handle_input(InputEvent* input, GameState* state, bool* should_exit) {
-    if(input->type != InputTypePress) return;
+int32_t bytemarket_app(void* p) {
+    UNUSED(p);
+    FuriMessageQueue* event_queue = furi_message_queue_alloc(8, sizeof(InputEvent));
+    
+    GameState* state = malloc(sizeof(GameState));
+    state->cash = 1000;
+    state->debt = 2000;
+    state->bank = 0;
+    state->day = 1;
+    state->current_sector = 0;
+    state->current_screen = 0;
+    state->selected_menu_index = 0;
+    state->selected_sub_index = 0;
+    memset(state->inventory, 0, sizeof(state->inventory));
+    srand(furi_get_tick());
+    randomize_prices();
 
-    // Global check: if Back is pressed
-    if(input->key == InputKeyBack) {
-        if(state->current_screen == 0) {
-            *should_exit = true; // Only exit app completely if we are already on the Main HUD
-        } else {
-            state->current_screen = 0; // Otherwise, pop back to the Main HUD
-        }
-        return;
-    }
+    ViewPort* view_port = view_port_alloc();
+    view_port_draw_callback_set(view_port, render_callback, state);
+    
+    // Direct firmware view-port subscribe strategy 
+    view_port_input_callback_set(view_port, (ViewPortInputCallback)furi_message_queue_put, event_queue);
 
-    if(state->current_screen == 5) { // Game Over Restart
-        if(input->key == InputKeyOk) {
-            state->cash = 1000;
-            state->debt = 2000;
-            state->bank = 0;
-            state->day = 1;
-            state->current_sector = 0;
-            state->current_screen = 0;
-            memset(state->inventory,
+    Gui* gui = furi_record_open(RECORD_GUI);
+    gui_add_view_port(gui, view_port, GuiLayerFullscreen);
+
+    InputEvent event;
+    while(1) {
+        if(furi_message_queue_get(event_queue, &event, FuriWaitForever) == FuriStatusOk) {
+            if(event.type != InputTypePress) continue;
+
+            // Clear execution processing for navigation back out
+            if(event.key == InputKeyBack) {
+                if(state->current_screen == 0) {
+                    break; 
+                } else {
+                    state->current_screen = 0;
+                    view_port_update(view_port);
+                    continue;
+                }
+            }
+
+            if(state->current_screen == 5) { 
+                if(event.key == InputKeyOk) {
+                    state->cash = 1000;
+                    state->debt = 2000;
+                    state->bank = 0;
+                    state->day = 1;
+                    state->current_sector = 0;
+                    state->current_screen = 0;
+                    memset(state->inventory, 0, sizeof(state->inventory));
+                    randomize_prices();
+                }
+                view_port_update(view_port);
+                continue;
+            }
+
+            if(state->current_screen == 0) { 
+                if(event.key == InputKeyUp) state->selected_menu_index = (state->selected_menu_index - 1 + 4) % 4;
+                if(event.key == InputKeyDown) state->selected_menu_index = (state->selected_menu_index + 1) % 4;
+                if(event.key == InputKeyOk) {
+                    state->current_screen = state->selected_menu_index + 1;
+                    state->selected_sub_index = 0;
+                }
+            } 
+            else { 
+                int max_index = (state->current_screen == 4) ? 3 : 4; 
+                if(event.key == InputKeyUp) state->selected_sub_index = (state->selected_sub_index - 1 + max_index) % max_index;
+                if(event.key == InputKeyDown) state->selected_sub_index = (state->selected_sub_index + 1) % max_index;
+
+                if(event.key == InputKeyOk) {
+                    int idx = state->selected_sub_index;
+                    if(state->current_screen == 1) { 
+                        if(state->cash >= market[idx].current_price) {
+                            state->cash -= market[idx].current_price;
+                            state->inventory[idx]++;
+                        }
+                    } 
+                    else if(state->current_screen == 2) { 
+                        if(state->inventory[idx] > 0) {
+                            state->cash += market[idx].current_price;
+                            state->inventory[idx]--;
+                        }
+                    } 
+                    else if(state->current_screen == 3) { 
+                        if(state->current_sector != idx) {
+                            state->current_sector = idx;
+                            state->day++;
+                            state->debt = (state->debt * 115) / 100; 
+                            randomize_prices();
+                            state->current_screen = 0; 
+                            
+                            if(state->day > TOTAL_DAYS) {
+                                state->current_screen = 5; 
+                            }
+                        }
+                    }
+                    else if(state->current_screen == 4) { 
+                        if(idx == 0 && state->cash >= 500 && state->debt >=
