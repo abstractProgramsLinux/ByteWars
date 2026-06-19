@@ -33,12 +33,12 @@ static const char* sectors[MAX_SECTORS] = {
 };
 
 static MarketItem market[MAX_ITEMS] = {
-    {"Synth-Weed",     15,   15},
-    {"Speed",          60,   60},
+    {"Synth-Weed",     50,   50},
+    {"Speed",          80,   80},
     {"Acid",           150,  150},
-    {"Cocaine",        400,  400},
-    {"Heroin",         850,  850},
-    {"Nanite-Juice",   2500, 2500}
+    {"Snow",        400,  400},
+    {"Black-Tar",         850,  850},
+    {"Nanite-Drank",   2500, 2500}
 };
 
 static void game_input_callback(InputEvent* input_event, void* context) {
@@ -123,60 +123,71 @@ static void render_callback(Canvas* canvas, void* ctx) {
 
     // Screen 9: Weapon & Barter Armory Shop
     if(state->current_screen == 9) {
-        canvas_draw_str(canvas, 2, 20, "BLACK MARKET ARMORY:");
+        canvas_draw_str(canvas, 2, 10, "BLACK MARKET ARMORY:");
+        canvas_draw_line(canvas, 0, 12, 128, 12);
         
-        // Dynamic labels based on what player owns
         const char* w_name = (state->weapon_level == 0) ? "Plasma Blade ($1k)" : 
                              (state->weapon_level == 1) ? "Laser Rifle ($3.5k)" : "Max Weapons Owned";
         snprintf(buffer, sizeof(buffer), "Barter Chip ($1.5k) [%d/3]", state->barter_chips);
 
-        if(state->selected_sub_index == 0) canvas_draw_str(canvas, 2, 32, ">");
-        canvas_draw_str(canvas, 12, 32, w_name);
+        if(state->selected_sub_index == 0) canvas_draw_str(canvas, 2, 24, ">");
+        canvas_draw_str(canvas, 12, 24, w_name);
 
-        if(state->selected_sub_index == 1) canvas_draw_str(canvas, 2, 45, ">");
-        canvas_draw_str(canvas, 12, 45, buffer);
+        if(state->selected_sub_index == 1) canvas_draw_str(canvas, 2, 37, ">");
+        canvas_draw_str(canvas, 12, 37, buffer);
         
-        snprintf(buffer, sizeof(buffer), "Current Gear: Wpn Lvl %d | Buff: -%d%%", state->weapon_level, state->barter_chips * 10);
-        canvas_draw_str(canvas, 2, 59, buffer);
+        snprintf(buffer, sizeof(buffer), "Cash: $%d | Gear: Wpn Lvl %d", state->cash, state->weapon_level);
+        canvas_draw_str(canvas, 2, 50, buffer);
+        snprintf(buffer, sizeof(buffer), "Barter Discount: -%d%%", state->barter_chips * 10);
+        canvas_draw_str(canvas, 2, 60, buffer);
+        return;
     }
 
-    // Global Top Status Bar (Only on actionable UI states)
-    if(state->current_screen <= 4 || state->current_screen == 9) {
-        snprintf(buffer, sizeof(buffer), "D:%d/%d | $%d | HP:%d%%", state->day, state->total_days, state->cash, state->health);
-        canvas_draw_str(canvas, 2, 10, buffer);
-        canvas_draw_line(canvas, 0, 12, 128, 12);
-    }
+    // Global Top Status Bar (Screens 0, 1, 2, 3, 4)
+    snprintf(buffer, sizeof(buffer), "D:%d/%d | $%d | HP:%d%%", state->day, state->total_days, state->cash, state->health);
+    canvas_draw_str(canvas, 2, 10, buffer);
+    canvas_draw_line(canvas, 0, 12, 128, 12);
 
     // Screen 0: Main HUD
     if(state->current_screen == 0) {
         snprintf(buffer, sizeof(buffer), "Loc: %s | Debt: $%d", sectors[state->current_sector], state->debt);
         canvas_draw_str(canvas, 2, 22, buffer);
 
-        const char* menu_opts[] = {"Buy Stash", "Sell Stash", "Jump Sector", "Loan Shark", "Black Market Armory"};
+        const char* menu_opts[] = {"Buy Stash", "Sell Stash", "Jump Sector", "Loan Shark", "Black Market Shop"};
         for(int i = 0; i < 5; i++) {
             int y_pos = 33 + (i * 7);
             if(state->selected_menu_index == i) canvas_draw_str(canvas, 2, y_pos, ">");
             canvas_draw_str(canvas, 10, y_pos, menu_opts[i]);
         }
     }
-    // Screen 1 & 2: Buy / Sell Market
+    // Screen 1 & 2: Buy / Sell Market Scrolling List Format
     else if(state->current_screen == 1 || state->current_screen == 2) {
-        canvas_draw_str(canvas, 2, 20, state->current_screen == 1 ? "BUY (BUFFED PRICE):" : "SELL COMMODITY:");
-        for(int i = 0; i < MAX_ITEMS; i++) {
-            int row = i % 3;
-            int col = i / 3;
-            int x = col * 66;
-            int y = 30 + (row * 11);
+        canvas_draw_str(canvas, 2, 21, state->current_screen == 1 ? "BUY PRICE LIST:" : "SELL PRICE LIST:");
+        
+        int start_index = 0;
+        if(state->selected_sub_index >= 3) {
+            start_index = state->selected_sub_index - 2;
+        }
+
+        for(int i = 0; i < 3; i++) {
+            int current_item = start_index + i;
+            if(current_item >= MAX_ITEMS) break;
+
+            int y_offset = 32 + (i * 10);
+            int price = market[current_item].current_price;
             
-            int price = market[i].current_price;
-            if(state->current_screen == 1) { // Render price with barter reductions applied
+            // Buff discount applied EXCLUSIVELY on purchase option
+            if(state->current_screen == 1) { 
                 price = price - ((price * (state->barter_chips * 10)) / 100);
             }
 
-            if(state->selected_sub_index == i) canvas_draw_str(canvas, x + 1, y, ">");
-            snprintf(buffer, sizeof(buffer), "%s:$%d(%d)", market[i].name, price, state->inventory[i]);
-            canvas_draw_str(canvas, x + 8, y, buffer);
+            if(state->selected_sub_index == current_item) canvas_draw_str(canvas, 2, y_offset, ">");
+            snprintf(buffer, sizeof(buffer), "%s: $%d [%d]", market[current_item].name, price, state->inventory[current_item]);
+            canvas_draw_str(canvas, 12, y_offset, buffer);
         }
+        
+        if(start_index > 0) canvas_draw_str(canvas, 120, 28, "^");
+        if(start_index + 3 < MAX_ITEMS) canvas_draw_str(canvas, 120, 55, "v");
     }
     // Screen 3: Travel Selection
     else if(state->current_screen == 3) {
@@ -248,191 +259,4 @@ int32_t bytemarket_app(void* p) {
 
             if(state->current_screen == 6) {
                 if(event.key == InputKeyUp) state->selected_menu_index = (state->selected_menu_index - 1 + 3) % 3;
-                if(event.key == InputKeyDown) state->selected_menu_index = (state->selected_menu_index + 1) % 3;
-                if(event.key == InputKeyOk) {
-                    if(state->selected_menu_index == 0) state->total_days = 30;
-                    if(state->selected_menu_index == 1) state->total_days = 90;
-                    if(state->selected_menu_index == 2) state->total_days = 120;
-                    state->current_screen = 0;
-                    state->selected_menu_index = 0;
-                }
-                view_port_update(view_port);
-                continue;
-            }
-
-            if(state->current_screen == 5) { 
-                if(event.key == InputKeyOk) {
-                    state->cash = 1000;
-                    state->debt = 2000;
-                    state->bank = 0;
-                    state->day = 1;
-                    state->health = 100;
-                    state->weapon_level = 0;
-                    state->barter_chips = 0;
-                    state->current_sector = 0;
-                    state->current_screen = 6; 
-                    memset(state->inventory, 0, sizeof(state->inventory));
-                    randomize_prices();
-                }
-                view_port_update(view_port);
-                continue;
-            }
-
-            if(state->current_screen == 7) { // Muggers
-                if(event.key == InputKeyUp || event.key == InputKeyDown) state->selected_sub_index = (state->selected_sub_index + 1) % 2;
-                if(event.key == InputKeyOk) {
-                    if(state->selected_sub_index == 0) { // Fight back!
-                        // Weapons drop your odds of losing fights significantly
-                        int fail_chance = (state->weapon_level == 0) ? 50 : (state->weapon_level == 1) ? 25 : 10;
-                        if((rand() % 100) < fail_chance) { 
-                            state->health -= 25;
-                            state->cash /= 2; 
-                        } else {
-                            state->cash += 400; // Total victory payout
-                        }
-                    } else { // Run Away!
-                        int dropped_idx = rand() % MAX_ITEMS;
-                        if(state->inventory[dropped_idx] > 0) state->inventory[dropped_idx]--; 
-                        state->health -= 5;
-                    }
-                    state->current_screen = 0;
-                    if(state->health <= 0) state->current_screen = 5;
-                }
-                view_port_update(view_port);
-                continue;
-            }
-
-            if(state->current_screen == 8) { // Police Intercept
-                if(event.key == InputKeyUp) state->selected_sub_index = (state->selected_sub_index - 1 + 3) % 3;
-                if(event.key == InputKeyDown) state->selected_sub_index = (state->selected_sub_index + 1) % 3;
-                if(event.key == InputKeyOk) {
-                    if(state->selected_sub_index == 0) { // Fight Scanners
-                        int fail_chance = (state->weapon_level == 0) ? 70 : (state->weapon_level == 1) ? 40 : 15;
-                        if((rand() % 100) < fail_chance) { 
-                            state->health -= 40;
-                            state->cash = 0; 
-                        }
-                    } else if(state->selected_sub_index == 1) { // Flight/Throttle Evasion
-                        if(rand() % 2 == 0) {
-                            state->health -= 15; 
-                        }
-                    } else { // Surrender Cargo
-                        int total_contraband = 0;
-                        for(int i = 0; i < MAX_ITEMS; i++) {
-                            total_contraband += state->inventory[i];
-                            state->inventory[i] = 0; 
-                        }
-                        state->cash -= (total_contraband * 100);
-                        if(state->cash < 0) state->cash = 0;
-                        if(total_contraband > 5) {
-                            state->day += 3; 
-                        }
-                    }
-                    state->current_screen = 0;
-                    if(state->health <= 0 || state->day > state->total_days) state->current_screen = 5;
-                }
-                view_port_update(view_port);
-                continue;
-            }
-
-            // Screen 9: Black Market Weapon and Barter Upgrades Logic Loop
-            if(state->current_screen == 9) {
-                if(event.key == InputKeyUp || event.key == InputKeyDown) state->selected_sub_index = (state->selected_sub_index + 1) % 2;
-                if(event.key == InputKeyOk) {
-                    if(state->selected_sub_index == 0) { // Purchase Weapon Upgrade branch
-                        if(state->weapon_level == 0 && state->cash >= 1000) {
-                            state->cash -= 1000;
-                            state->weapon_level = 1; // Plasma Blade unlocked
-                        } else if(state->weapon_level == 1 && state->cash >= 3500) {
-                            state->cash -= 3500;
-                            state->weapon_level = 2; // Laser Rifle unlocked
-                        }
-                    } else if(state->selected_sub_index == 1) { // Purchase Barter Buff Chip branch
-                        if(state->barter_chips < 3 && state->cash >= 1500) {
-                            state->cash -= 1500;
-                            state->barter_chips++;
-                        }
-                    }
-                }
-                view_port_update(view_port);
-                continue;
-            }
-
-            // Screen 0 HUD Options Controller Update
-            if(state->current_screen == 0) { 
-                if(event.key == InputKeyUp) state->selected_menu_index = (state->selected_menu_index - 1 + 5) % 5;
-                if(event.key == InputKeyDown) state->selected_menu_index = (state->selected_menu_index + 1) % 5;
-                if(event.key == InputKeyOk) {
-                    state->current_screen = state->selected_menu_index + 1;
-                    state->selected_sub_index = 0;
-                }
-            } 
-            else { 
-                int max_index = (state->current_screen == 4) ? 3 : MAX_ITEMS; 
-                if(event.key == InputKeyUp) state->selected_sub_index = (state->selected_sub_index - 1 + max_index) % max_index;
-                if(event.key == InputKeyDown) state->selected_sub_index = (state->selected_sub_index + 1) % max_index;
-
-                if(event.key == InputKeyOk) {
-                    int idx = state->selected_sub_index;
-                    if(state->current_screen == 1) { // Buy Module with stacking barter percentage reductions
-                        int adjusted_cost = market[idx].current_price - ((market[idx].current_price * (state->barter_chips * 10)) / 100);
-                        if(state->cash >= adjusted_cost) {
-                            state->cash -= adjusted_cost;
-                            state->inventory[idx]++;
-                            
-                            if(rand() % 100 < 15) {
-                                state->current_screen = 7;
-                                state->selected_sub_index = 0;
-                            }
-                        }
-                    } 
-                    else if(state->current_screen == 2) { // Sell Stash item routine module path
-                        if(state->inventory[idx] > 0) {
-                            state->cash += market[idx].current_price;
-                            state->inventory[idx]--;
-                        }
-                    } 
-                    else if(state->current_screen == 3) { // Travel
-                        if(state->current_sector != idx) {
-                            state->current_sector = idx;
-                            state->day++;
-                            state->debt = (state->debt * 115) / 100; 
-                            randomize_prices();
-                            state->current_screen = 0; 
-                            
-                            if(rand() % 100 < 20) {
-                                state->current_screen = 8;
-                                state->selected_sub_index = 0;
-                            }
-                            
-                            if(state->day > state->total_days) {
-                                state->current_screen = 5; 
-                            }
-                        }
-                    }
-                    else if(state->current_screen == 4) { // Secure Financial Bank Link
-                        if(idx == 0 && state->cash >= 500 && state->debt >= 500) {
-                            state->cash -= 500;
-                            state->debt -= 500;
-                        } else if(idx == 1 && state->cash >= 500) {
-                            state->cash -= 500;
-                            state->bank += 500;
-                        } else if(idx == 2 && state->bank >= 500) {
-                            state->bank -= 500;
-                            state->cash += 500;
-                        }
-                    }
-                }
-            }
-            view_port_update(view_port);
-        }
-    }
-
-    gui_remove_view_port(gui, view_port);
-    view_port_free(view_port);
-    furi_message_queue_free(event_queue);
-    furi_record_close(RECORD_GUI);
-    free(state);
-
-    return 0;
-}
+                if(event.key == InputKeyDown) state->selected_menu
