@@ -36,6 +36,13 @@ static MarketItem market[MAX_ITEMS] = {
     {"Bio-Firmware", 15, 15}
 };
 
+// Explicit callback matching firmware expectations exactly
+static void game_input_callback(InputEvent* input_event, void* context) {
+    furi_assert(context);
+    FuriMessageQueue* event_queue = context;
+    furi_message_queue_put(event_queue, input_event, FuriWaitForever);
+}
+
 void randomize_prices() {
     for(int i = 0; i < MAX_ITEMS; i++) {
         int variance = (market[i].base_price * 40) / 100; 
@@ -129,8 +136,8 @@ int32_t bytemarket_app(void* p) {
     ViewPort* view_port = view_port_alloc();
     view_port_draw_callback_set(view_port, render_callback, state);
     
-    // Direct firmware view-port subscribe strategy 
-    view_port_input_callback_set(view_port, (ViewPortInputCallback)furi_message_queue_put, event_queue);
+    // Linked with proper callback helper function context routing
+    view_port_input_callback_set(view_port, game_input_callback, event_queue);
 
     Gui* gui = furi_record_open(RECORD_GUI);
     gui_add_view_port(gui, view_port, GuiLayerFullscreen);
@@ -140,7 +147,6 @@ int32_t bytemarket_app(void* p) {
         if(furi_message_queue_get(event_queue, &event, FuriWaitForever) == FuriStatusOk) {
             if(event.type != InputTypePress) continue;
 
-            // Clear execution processing for navigation back out
             if(event.key == InputKeyBack) {
                 if(state->current_screen == 0) {
                     break; 
@@ -207,4 +213,28 @@ int32_t bytemarket_app(void* p) {
                         }
                     }
                     else if(state->current_screen == 4) { 
-                        if(idx == 0 && state->cash >= 500 && state->debt >=
+                        if(idx == 0 && state->cash >= 500 && state->debt >= 500) {
+                            state->cash -= 500;
+                            state->debt -= 500;
+                        } else if(idx == 1 && state->cash >= 500) {
+                            state->cash -= 500;
+                            state->bank += 500;
+                } else if(idx == 2 && state->bank >= 500) {
+                            state->bank -= 500;
+                            state->cash += 500;
+                        }
+                    }
+                }
+            }
+            view_port_update(view_port);
+        }
+    }
+
+    gui_remove_view_port(gui, view_port);
+    view_port_free(view_port);
+    furi_message_queue_free(event_queue);
+    furi_record_close(RECORD_GUI);
+    free(state);
+
+    return 0;
+}
