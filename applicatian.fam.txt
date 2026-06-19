@@ -1,0 +1,9 @@
+App(
+    appid="bytemarket",
+    name="ByteMarket",
+    apptype=FlipperAppType.EXTERNAL,
+    entry_point="bytemarket_app",
+    stack_size=2 * 1024,
+    fap_category="Games",
+    fap_icon="bytemarket.png", # Optional: can use a default game icon
+)
